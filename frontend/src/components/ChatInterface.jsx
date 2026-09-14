@@ -188,8 +188,8 @@ const ChatInterface = ({ chatId, onChatCreated }) => {
                   <div
                     className={`max-w-[85%] ${
                       msg.role === 'user'
-                        ? 'bg-gradient-to-br from-grape to-grape-dark text-white px-5 py-3.5 rounded-[26px] rounded-br-lg clay-sm'
-                        : 'bg-white dark:bg-[#2A1F47] border-[3px] border-lavender-deep dark:border-grape-dark/60 px-6 py-5 rounded-[26px] rounded-bl-lg clay-sm'
+                        ? 'bg-gradient-to-br from-grape to-grape-dark text-white px-5 py-3.5 rounded-lg rounded-br-lg clay-sm'
+                        : 'bg-white dark:bg-[#2A1F47] border-[3px] border-lavender-deep dark:border-grape-dark/60 px-6 py-5 rounded-lg rounded-bl-lg clay-sm'
                     }`}
                   >
                     {msg.role === 'assistant' && msg.mode && (
@@ -212,7 +212,7 @@ const ChatInterface = ({ chatId, onChatCreated }) => {
                       <div className="mt-4 pt-4 border-t-2 border-dashed border-lavender-deep dark:border-grape-dark/60 flex flex-wrap gap-2">
                         {msg.sources.map((src, idx) => (
                           <motion.span
-                            whileHover={{ scale: 1.08, rotate: -2 }}
+                            whileHover={{ scale: 1.03 }}
                             key={idx}
                             className="inline-flex items-center text-xs font-bold text-grape dark:text-lime bg-lavender dark:bg-grape-dark/40 px-2.5 py-1.5 rounded-full border-2 border-lavender-deep dark:border-grape-dark cursor-default"
                           >
@@ -234,8 +234,8 @@ const ChatInterface = ({ chatId, onChatCreated }) => {
 
       {/* Floating Bubble Input */}
       <div className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-cream dark:from-night via-cream/90 dark:via-night/90 to-transparent pt-20 pointer-events-none">
-        <div className="max-w-3xl mx-auto relative animate-glow-clay rounded-[28px] transition-all duration-300 pointer-events-auto">
-          <div className="absolute inset-0 bg-white dark:bg-[#2A1F47] rounded-[28px] clay border-[3px] border-lavender-deep dark:border-grape-dark/60"></div>
+        <div className="max-w-3xl mx-auto relative animate-glow-clay rounded-xl transition-all duration-300 pointer-events-auto">
+          <div className="absolute inset-0 bg-white dark:bg-[#2A1F47] rounded-xl clay border-[3px] border-lavender-deep dark:border-grape-dark/60"></div>
           <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
@@ -246,11 +246,11 @@ const ChatInterface = ({ chatId, onChatCreated }) => {
               }
             }}
             placeholder="Ask Mnemo something about your notes..."
-            className="relative w-full resize-none rounded-[28px] bg-transparent py-4 pl-6 pr-16 text-base font-semibold focus:outline-none max-h-32 placeholder:text-grape/40 dark:placeholder:text-lavender/40 text-ink dark:text-lavender"
+            className="relative w-full resize-none rounded-xl bg-transparent py-4 pl-6 pr-16 text-base font-semibold focus:outline-none max-h-32 placeholder:text-grape/40 dark:placeholder:text-lavender/40 text-ink dark:text-lavender"
             rows={1}
           />
           <motion.button
-            whileHover={{ scale: 1.1, rotate: -6 }}
+            whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.9 }}
             onClick={handleSend}
             disabled={!input.trim() || isTyping}

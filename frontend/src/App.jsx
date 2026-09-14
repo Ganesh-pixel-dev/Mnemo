@@ -41,7 +41,7 @@ const DocumentViewer = ({ file, onClose }) => {
     >
       <div className="p-5 md:p-6 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="p-3 bg-gradient-to-br from-sun to-pink rounded-2xl clay-sm rotate-[-4deg]">
+          <div className="p-3 bg-gradient-to-br from-sun to-pink rounded-2xl clay-sm">
             <FileText className="w-5 h-5 text-white" />
           </div>
           <div>
@@ -50,7 +50,7 @@ const DocumentViewer = ({ file, onClose }) => {
           </div>
         </div>
         <motion.button
-          whileHover={{ scale: 1.08, rotate: 90 }}
+          whileHover={{ scale: 1.04 }}
           whileTap={{ scale: 0.92 }}
           onClick={onClose}
           className="p-2.5 bg-white dark:bg-[#2A1F47] text-grape dark:text-lavender rounded-full clay-sm border-2 border-lavender-deep dark:border-grape-dark/60"
@@ -67,14 +67,14 @@ const DocumentViewer = ({ file, onClose }) => {
         ) : isPdf ? (
           <iframe 
             src={`http://localhost:8000/files/${file.filename}/raw`} 
-            className="w-full h-full min-h-[75vh] rounded-[32px] border-[3px] border-lavender-deep dark:border-grape-dark/60 bg-white"
+            className="w-full h-full min-h-[75vh] rounded-xl border-[3px] border-lavender-deep dark:border-grape-dark/60 bg-white"
             title="PDF Viewer"
           />
         ) : (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="max-w-3xl mx-auto whitespace-pre-wrap text-base font-medium text-ink dark:text-lavender leading-relaxed bg-white dark:bg-[#2A1F47] p-8 md:p-10 rounded-[32px] clay border-[3px] border-lavender-deep dark:border-grape-dark/60"
+            className="max-w-3xl mx-auto whitespace-pre-wrap text-base font-medium text-ink dark:text-lavender leading-relaxed bg-white dark:bg-[#2A1F47] p-8 md:p-10 rounded-xl clay border-[3px] border-lavender-deep dark:border-grape-dark/60"
           >
             {content}
           </motion.div>
@@ -190,11 +190,7 @@ function App() {
   return (
     <div className="flex h-screen bg-cream dark:bg-night text-ink dark:text-lavender font-sans overflow-hidden transition-colors duration-300">
       {/* Playful Sidebar */}
-      <div className="w-[290px] flex-shrink-0 bg-lavender dark:bg-night-panel flex flex-col z-20 transition-colors duration-300 relative overflow-hidden">
-        {/* decorative floating blobs */}
-        <div className="absolute -top-10 -right-14 w-40 h-40 bg-lime/30 dark:bg-lime/10 blob-1 blur-2xl pointer-events-none" />
-        <div className="absolute bottom-24 -left-16 w-32 h-32 bg-pink/20 dark:bg-pink/10 blob-2 blur-2xl pointer-events-none" />
-
+      <div className="w-[290px] flex-shrink-0 bg-lavender dark:bg-night-panel flex flex-col z-20 transition-colors duration-300 relative overflow-hidden border-r-2 border-lavender-deep dark:border-grape-dark">
         <div className="p-5 flex items-center justify-between relative z-10">
           <div className="flex items-center gap-2.5">
             <Mascot mood="happy" size={42} className="animate-bounce-soft" />
@@ -203,7 +199,7 @@ function App() {
             </h1>
           </div>
           <motion.button
-            whileHover={{ scale: 1.1, rotate: 15 }}
+            whileHover={{ scale: 1.04 }}
             whileTap={{ scale: 0.9 }}
             onClick={() => setIsDarkMode(!isDarkMode)}
             className="p-2.5 rounded-full bg-white dark:bg-grape-dark/40 text-grape dark:text-sun clay-sm"
@@ -214,7 +210,7 @@ function App() {
 
         <div className="px-4 flex-1 overflow-y-auto space-y-6 scrollbar-hide pb-4 relative z-10">
           <motion.button
-            whileHover={{ scale: 1.03, rotate: -0.5 }}
+            whileHover={{ scale: 1.01 }}
             whileTap={{ scale: 0.96 }}
             onClick={() => { setCurrentChatId(null); setViewingFile(null); }}
             className="w-full flex items-center justify-center gap-2 bg-gradient-to-br from-teal to-teal-dark text-white rounded-2xl px-4 py-3.5 text-sm font-bold font-display clay-sm transition-shadow"
@@ -282,7 +278,7 @@ function App() {
 
         {/* Upload blob dropzone */}
         <div className="p-4 relative z-10">
-          <label className="relative overflow-hidden w-full flex flex-col items-center justify-center border-[3px] border-dashed border-grape/25 dark:border-lavender/20 bg-white/70 dark:bg-grape-dark/20 rounded-[28px] p-5 cursor-pointer hover:border-sun dark:hover:border-sun hover:bg-sun/10 transition-all group hover-jiggle">
+          <label className="relative overflow-hidden w-full flex flex-col items-center justify-center border-[3px] border-dashed border-grape/25 dark:border-lavender/20 bg-white/70 dark:bg-grape-dark/20 rounded-xl p-5 cursor-pointer hover:border-sun dark:hover:border-sun hover:bg-sun/10 transition-all group hover-jiggle">
             {uploading ? (
               <motion.div
                 animate={{ opacity: [0.8, 1, 0.8] }}
@@ -310,7 +306,7 @@ function App() {
               </>
             )}
             {!uploading && uploadMessage && (
-              <motion.div initial={{ y: 10, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="absolute inset-0 bg-lime/90 flex items-center justify-center rounded-[28px]">
+              <motion.div initial={{ y: 10, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="absolute inset-0 bg-lime/90 flex items-center justify-center rounded-xl">
                 <span className="text-xs font-extrabold text-grape font-display px-4 text-center">{uploadMessage}</span>
               </motion.div>
             )}

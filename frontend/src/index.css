@@ -1,28 +1,37 @@
 @import "tailwindcss";
-@import url('https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700;800&family=Quicksand:wght@500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Work+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* ==================================================================
+   MNEMO — "Field Notes": a study companion styled like a well-used
+   index-card system. Warm paper, one ink color, one accent. Flat
+   hard shadows instead of glossy/neumorphic ones — nothing floats,
+   nothing glows, nothing is a gradient blob.
+   ================================================================== */
+
 @theme {
-  --font-sans: "Quicksand", ui-sans-serif, system-ui, sans-serif;
-  --font-display: "Baloo 2", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Work Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
 
-  --color-cream: #FFF8F0;
-  --color-lavender: #F1ECFF;
-  --color-lavender-deep: #E4D9FF;
-  --color-teal: #00C2A8;
-  --color-teal-dark: #009984;
-  --color-pink: #FF5FA2;
-  --color-pink-dark: #E8408A;
-  --color-lime: #C6F135;
-  --color-lime-dark: #A8D400;
-  --color-grape: #6C4AB6;
-  --color-grape-dark: #4E3387;
-  --color-ink: #2A1B3D;
-  --color-sun: #FFC93C;
-  --color-sun-dark: #EBA800;
+  /* token names kept stable so component classNames don't need to change */
+  --color-cream: #F4EEE0;         /* paper */
+  --color-lavender: #EAE2CC;      /* sidebar panel, slightly darker paper */
+  --color-lavender-deep: #C9BB98; /* rule / border */
+  --color-teal: #B5482E;          /* primary accent — terracotta */
+  --color-teal-dark: #8F381F;
+  --color-pink: #57694C;          /* secondary accent — moss */
+  --color-pink-dark: #3F4E37;
+  --color-lime: #C98A2C;          /* highlight — ochre */
+  --color-lime-dark: #A66F1E;
+  --color-grape: #2A241B;         /* heading ink */
+  --color-grape-dark: #1B1710;
+  --color-ink: #2A241B;
+  --color-sun: #C98A2C;
+  --color-sun-dark: #A66F1E;
 
-  --color-night: #1B1330;
-  --color-night-panel: #241A3D;
+  --color-night: #19160F;
+  --color-night-panel: #221D14;
 }
 
 body {
@@ -31,13 +40,16 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   background-color: var(--color-cream);
+  background-image: radial-gradient(rgba(42, 36, 27, 0.05) 1px, transparent 1px);
+  background-size: 22px 22px;
   color: var(--color-ink);
   transition: background-color 0.3s ease, color 0.3s ease;
 }
 
 html.dark body {
   background-color: var(--color-night);
-  color: #F1ECFF;
+  background-image: radial-gradient(rgba(244, 238, 224, 0.04) 1px, transparent 1px);
+  color: #E9E1CE;
 }
 
 h1, h2, h3, .font-display {
@@ -49,121 +61,89 @@ h1, h2, h3, .font-display {
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
   background: var(--color-lavender-deep);
-  border-radius: 10px;
+  border-radius: 4px;
 }
-::-webkit-scrollbar-thumb:hover { background: var(--color-grape); }
-html.dark ::-webkit-scrollbar-thumb { background: #3A2A5C; }
-html.dark ::-webkit-scrollbar-thumb:hover { background: var(--color-grape); }
+::-webkit-scrollbar-thumb:hover { background: var(--color-teal); }
+html.dark ::-webkit-scrollbar-thumb { background: #4A4030; }
+html.dark ::-webkit-scrollbar-thumb:hover { background: var(--color-teal); }
 
 .scrollbar-hide::-webkit-scrollbar { display: none; }
 .scrollbar-hide { scrollbar-width: none; }
 
-/* ============ Claymorphism shadows ============ */
+/* ============ Card shadow: flat, hard-edged, stamped — not glossy ============ */
 .clay {
-  box-shadow:
-    8px 8px 16px rgba(108, 74, 182, 0.14),
-    -6px -6px 14px rgba(255, 255, 255, 0.85);
+  box-shadow: 4px 4px 0 rgba(42, 36, 27, 0.85);
 }
 .clay-inset {
-  box-shadow:
-    inset 5px 5px 10px rgba(108, 74, 182, 0.12),
-    inset -4px -4px 8px rgba(255, 255, 255, 0.8);
+  box-shadow: inset 2px 2px 0 rgba(42, 36, 27, 0.12);
 }
 .clay-sm {
-  box-shadow:
-    4px 4px 10px rgba(108, 74, 182, 0.12),
-    -3px -3px 8px rgba(255, 255, 255, 0.8);
+  box-shadow: 3px 3px 0 rgba(42, 36, 27, 0.85);
 }
 .clay-pressed {
-  box-shadow:
-    inset 3px 3px 8px rgba(0, 0, 0, 0.15),
-    inset -2px -2px 6px rgba(255, 255, 255, 0.4);
+  box-shadow: inset 2px 2px 0 rgba(42, 36, 27, 0.25);
 }
-html.dark .clay {
-  box-shadow:
-    8px 8px 18px rgba(0, 0, 0, 0.45),
-    -6px -6px 14px rgba(108, 74, 182, 0.15);
-}
+html.dark .clay,
 html.dark .clay-sm {
-  box-shadow:
-    4px 4px 10px rgba(0, 0, 0, 0.4),
-    -3px -3px 8px rgba(108, 74, 182, 0.12);
+  box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.6);
 }
 
-/* ============ Blob shapes ============ */
-.blob-1 { border-radius: 63% 37% 54% 46% / 55% 48% 52% 45%; }
-.blob-2 { border-radius: 42% 58% 61% 39% / 47% 41% 59% 53%; }
-.blob-3 { border-radius: 55% 45% 38% 62% / 60% 45% 55% 40%; }
+/* ============ No blob shapes — index-card corners only ============ */
+.blob-1, .blob-2, .blob-3 { border-radius: 6px; }
 
-/* ============ Motion ============ */
+/* ============ Motion (kept subtle, no bounce/wobble/jiggle) ============ */
 @keyframes floaty {
-  0%, 100% { transform: translateY(0) rotate(0deg); }
-  50% { transform: translateY(-6px) rotate(-1.5deg); }
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
 }
 .animate-floaty { animation: floaty 4.5s ease-in-out infinite; }
 
-@keyframes wobble {
-  0%, 100% { border-radius: 63% 37% 54% 46% / 55% 48% 52% 45%; }
-  33% { border-radius: 45% 55% 60% 40% / 50% 55% 45% 50%; }
-  66% { border-radius: 58% 42% 40% 60% / 40% 50% 50% 60%; }
-}
-.animate-wobble { animation: wobble 6s ease-in-out infinite; }
+@keyframes wobble { 0%, 100% { transform: none; } }
+.animate-wobble { animation: none; }
 
 @keyframes pop-in {
-  0% { opacity: 0; transform: scale(0.85) translateY(10px); }
-  60% { transform: scale(1.03) translateY(-2px); }
-  100% { opacity: 1; transform: scale(1) translateY(0); }
+  0% { opacity: 0; transform: translateY(6px); }
+  100% { opacity: 1; transform: translateY(0); }
 }
-.animate-pop-in { animation: pop-in 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) both; }
+.animate-pop-in { animation: pop-in 0.2s ease-out both; }
 
-@keyframes jiggle {
-  0%, 100% { transform: rotate(0deg); }
-  25% { transform: rotate(-4deg); }
-  75% { transform: rotate(4deg); }
-}
-.hover-jiggle:hover { animation: jiggle 0.4s ease-in-out; }
+@keyframes jiggle { 0%, 100% { transform: none; } }
+.hover-jiggle:hover { animation: none; }
 
-@keyframes bounce-soft {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-4px); }
-}
-.animate-bounce-soft { animation: bounce-soft 2.2s ease-in-out infinite; }
+@keyframes bounce-soft { 0%, 100% { transform: none; } }
+.animate-bounce-soft { animation: none; }
 
 @keyframes dot-bounce {
-  0%, 80%, 100% { transform: scale(0.6) translateY(0); opacity: 0.5; }
-  40% { transform: scale(1) translateY(-5px); opacity: 1; }
+  0%, 80%, 100% { transform: translateY(0); opacity: 0.4; }
+  40% { transform: translateY(-4px); opacity: 1; }
 }
 
-/* ============ Mnemo Mascot ============ */
+/* ============ Mnemo Mascot — a stamped index-tab glyph, not a blob ============ */
 .mascot { position: relative; display: inline-block; }
 .mascot-blob {
   width: 100%;
   height: 100%;
   position: relative;
-  background: linear-gradient(135deg, var(--color-teal) 0%, var(--color-grape) 100%);
-  border-radius: 63% 37% 54% 46% / 55% 48% 52% 45%;
-  animation: wobble 5s ease-in-out infinite;
-  box-shadow: 6px 6px 14px rgba(108, 74, 182, 0.25), -4px -4px 10px rgba(255, 255, 255, 0.6);
+  background: var(--color-cream);
+  border: 2px solid var(--color-ink);
+  border-radius: 7px;
+  box-shadow: 3px 3px 0 var(--color-ink);
+}
+html.dark .mascot-blob {
+  background: var(--color-night-panel);
+  border-color: #E9E1CE;
+  box-shadow: 3px 3px 0 rgba(0,0,0,0.6);
 }
 .mascot-eye {
   position: absolute;
-  top: 38%;
-  width: 18%;
-  height: 18%;
-  background: white;
-  border-radius: 50%;
-  box-shadow: inset 0 0 0 2px rgba(42, 27, 61, 0.06);
-}
-.mascot-eye::after {
-  content: '';
-  position: absolute;
-  top: 28%;
-  left: 28%;
-  width: 44%;
-  height: 44%;
+  top: 36%;
+  width: 14%;
+  height: 14%;
   background: var(--color-ink);
-  border-radius: 50%;
+  border-radius: 1px;
 }
+html.dark .mascot-eye { background: #E9E1CE; }
+.mascot-eye::after { content: none; }
 .mascot-eye-left { left: 27%; }
 .mascot-eye-right { right: 27%; }
 .mascot-mouth {
@@ -171,46 +151,35 @@ html.dark .clay-sm {
   bottom: 26%;
   left: 50%;
   transform: translateX(-50%);
-  width: 26%;
-  height: 12%;
-  background: var(--color-ink);
-  border-radius: 0 0 12px 12px;
-  opacity: 0.85;
+  width: 30%;
+  height: 2.5px;
+  background: var(--color-teal);
 }
 .mascot-talking .mascot-mouth {
   animation: mouth-talk 0.5s ease-in-out infinite;
-  border-radius: 50%;
 }
 @keyframes mouth-talk {
-  0%, 100% { height: 8%; }
-  50% { height: 18%; }
+  0%, 100% { width: 30%; }
+  50% { width: 44%; }
 }
-.mascot-thinking .mascot-blob { animation: wobble 2.2s ease-in-out infinite; }
 .mascot-thinking .mascot-eye { top: 34%; }
-.mascot-thinking .mascot-mouth { width: 14%; height: 5%; border-radius: 10px; opacity: 0.6; }
-.mascot-happy .mascot-mouth {
-  width: 34%;
-  height: 16%;
-  border-radius: 0 0 20px 20px;
-}
+.mascot-thinking .mascot-mouth { width: 18%; opacity: 0.6; }
+.mascot-happy .mascot-mouth { width: 42%; height: 3px; background: var(--color-lime); }
 .mascot-dot {
   position: absolute;
-  top: -14px;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--color-grape);
-  animation: dot-bounce 1.2s infinite;
+  top: -12px;
+  width: 4px;
+  height: 4px;
+  background: var(--color-teal);
 }
 html.dark .mascot-dot { background: var(--color-lime); }
-.mascot-dot-1 { left: 8%; animation-delay: 0s; }
-.mascot-dot-2 { left: 44%; animation-delay: 0.15s; top: -20px; }
-.mascot-dot-3 { right: 8%; animation-delay: 0.3s; }
+.mascot-dot-1 { left: 8%; animation: dot-bounce 1.2s infinite; animation-delay: 0s; }
+.mascot-dot-2 { left: 44%; animation: dot-bounce 1.2s infinite; animation-delay: 0.15s; top: -18px; }
+.mascot-dot-3 { right: 8%; animation: dot-bounce 1.2s infinite; animation-delay: 0.3s; }
 
-/* ============ Glow focus ring for input ============ */
-@keyframes glow-clay {
-  0% { box-shadow: 0 0 0 0 rgba(0, 194, 168, 0.35), 8px 8px 16px rgba(108,74,182,0.14), -6px -6px 14px rgba(255,255,255,0.85); }
-  70% { box-shadow: 0 0 0 12px rgba(0, 194, 168, 0), 8px 8px 16px rgba(108,74,182,0.14), -6px -6px 14px rgba(255,255,255,0.85); }
-  100% { box-shadow: 0 0 0 0 rgba(0, 194, 168, 0), 8px 8px 16px rgba(108,74,182,0.14), -6px -6px 14px rgba(255,255,255,0.85); }
+/* ============ Focus state: a underline-style ring, not a glow pulse ============ */
+@keyframes glow-clay { 0%, 100% { box-shadow: none; } }
+.animate-glow-clay:focus-within {
+  outline: 2px solid var(--color-teal);
+  outline-offset: 2px;
 }
-.animate-glow-clay:focus-within { animation: glow-clay 2s infinite; }
