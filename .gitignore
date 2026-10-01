@@ -3,3 +3,8 @@ __pycache__/
 *.pyc
 node_modules/
 .env
+
+# Local data (created when you run the app)
+backend/chroma_db/
+backend/mnemo.db
+backend/uploads/
