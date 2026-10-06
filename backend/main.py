@@ -1,168 +1,242 @@
-import os
+import json
+import logging
 import shutil
-from datetime import datetime
-from fastapi import FastAPI, File, UploadFile, HTTPException
+from pathlib import Path
+
+from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse, FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
+from pydantic import BaseModel, Field
 
-from models import QueryRequest, QueryResponse, UploadResponse, CreateChatRequest
-from ingestion import extract_text_from_file, chunk_text
-from vector_store import add_chunks_to_db, delete_file_chunks
-from llm_orchestrator import handle_query_stream
-import database
+import ingestion
+from config import Settings
+from database import Database, DuplicateError, new_id
+from grounding import Grounder, NLIScorer
+from llm import OllamaClient
+from rag import QueryService
+from vector_store import SentenceEmbedder, VectorStore
 
-app = FastAPI(title="Mnemo API")
+log = logging.getLogger("mnemo")
 
-# Initialize SQLite database
-database.init_db()
-
-# Allow CORS for local development
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"], # Default Vite port
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "uploads")
-os.makedirs(UPLOAD_DIR, exist_ok=True)
-
-@app.get("/chats")
-async def get_chats():
-    return database.get_chats()
-
-@app.post("/chats")
-async def create_chat(request: CreateChatRequest):
-    database.create_chat(request.id, request.title)
-    return {"status": "success"}
-
-@app.get("/chats/{chat_id}")
-async def get_chat_messages(chat_id: str):
-    return database.get_messages(chat_id)
-
-@app.delete("/chats/{chat_id}")
-async def delete_chat_endpoint(chat_id: str):
-    database.delete_chat(chat_id)
-    return {"status": "success"}
-
-@app.get("/files")
-async def get_files():
-    if not os.path.exists(UPLOAD_DIR):
-        return []
-    
-    files = []
-    for f in os.listdir(UPLOAD_DIR):
-        path = os.path.join(UPLOAD_DIR, f)
-        if os.path.isfile(path):
-            stats = os.stat(path)
-            files.append({
-                "filename": f,
-                "size": stats.st_size,
-                "uploaded_at": datetime.fromtimestamp(stats.st_mtime).isoformat()
-            })
-    return files
-
-@app.get("/files/{filename}")
-def get_file_content(filename: str):
-    # BUGFIX: sanitize the filename so a value like "../../etc/passwd" can't
-    # escape UPLOAD_DIR. basename() strips any directory components, and we
-    # additionally verify the resolved path still lives inside UPLOAD_DIR.
-    safe_name = os.path.basename(filename)
-    file_path = os.path.join(UPLOAD_DIR, safe_name)
-    if os.path.commonpath([os.path.abspath(file_path), os.path.abspath(UPLOAD_DIR)]) != os.path.abspath(UPLOAD_DIR):
-        raise HTTPException(status_code=400, detail="Invalid filename")
-
-    if not os.path.exists(file_path):
-        raise HTTPException(status_code=404, detail="File not found")
-        
-    try:
-        text = extract_text_from_file(file_path)
-        return {"filename": safe_name, "content": text}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/files/{filename}/raw")
-def get_raw_file(filename: str):
-    safe_name = os.path.basename(filename)
-    file_path = os.path.join(UPLOAD_DIR, safe_name)
-    if os.path.commonpath([os.path.abspath(file_path), os.path.abspath(UPLOAD_DIR)]) != os.path.abspath(UPLOAD_DIR):
-        raise HTTPException(status_code=400, detail="Invalid filename")
-
-    if not os.path.exists(file_path):
-        raise HTTPException(status_code=404, detail="File not found")
-        
-    return FileResponse(file_path)
-
-@app.delete("/files/{filename}")
-async def delete_file_endpoint(filename: str):
-    safe_name = os.path.basename(filename)
-    file_path = os.path.join(UPLOAD_DIR, safe_name)
-    if os.path.commonpath([os.path.abspath(file_path), os.path.abspath(UPLOAD_DIR)]) != os.path.abspath(UPLOAD_DIR):
-        raise HTTPException(status_code=400, detail="Invalid filename")
-
-    if os.path.exists(file_path):
-        os.remove(file_path)
-    
-    delete_file_chunks(safe_name)
-    return {"status": "success"}
+DEFAULT_COLLECTION = "My notes"
+READ_BLOCK = 1024 * 1024
 
 
-# BUGFIX: this route is declared as a plain `def`, not `async def`.
-# extract_text_from_file (pdfplumber) and add_chunks_to_db (sentence-transformers
-# embedding) are blocking, synchronous calls. If this were `async def`, that work
-# would run directly on the event loop and freeze every other request (e.g. GET
-# /chats, GET /files) for the whole duration of the upload. FastAPI automatically
-# runs plain `def` routes in a worker thread, so declaring it this way fixes that.
-@app.post("/upload", response_model=UploadResponse)
-def upload_file(file: UploadFile = File(...)):
-    if not file.filename:
-        raise HTTPException(status_code=400, detail="No file uploaded")
+class CollectionIn(BaseModel):
+    name: str = Field(min_length=1, max_length=60)
 
-    # BUGFIX: sanitize the filename here too — otherwise an uploaded file named
-    # "../../../etc/cron.d/evil" could be written outside UPLOAD_DIR.
-    safe_name = os.path.basename(file.filename)
-    if not safe_name:
-        raise HTTPException(status_code=400, detail="Invalid filename")
 
-    file_path = os.path.join(UPLOAD_DIR, safe_name)
-    
-    with open(file_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
-        
-    try:
-        # 1. Extract text
-        text = extract_text_from_file(file_path)
-        
-        # 2. Chunk text
-        chunks = chunk_text(text)
-        
-        # 3. Store in Vector DB
-        date_added = datetime.now().strftime("%Y-%m-%d")
-        add_chunks_to_db(chunks, safe_name, date_added)
-        
-        return UploadResponse(
-            message=f"Successfully processed {safe_name}",
-            chunks_indexed=len(chunks)
-        )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+class ChatIn(BaseModel):
+    title: str = Field(min_length=1, max_length=120)
 
-@app.post("/query")
-async def query_notes(request: QueryRequest):
-    if not request.text.strip():
-        raise HTTPException(status_code=400, detail="Query cannot be empty")
 
-    # BUGFIX (was dead code): handle_query_stream is a generator function, so
-    # calling it here only builds a generator object — none of its body runs
-    # yet. That means this try/except could never actually catch an error
-    # raised during retrieval or generation; those happen later, while
-    # StreamingResponse iterates the generator to send bytes to the client.
-    # The try/except is removed here and the real error handling now lives
-    # inside handle_query_stream itself (see llm_orchestrator.py), which
-    # catches failures and yields a graceful SSE error chunk instead of
-    # crashing the stream.
-    return StreamingResponse(
-        handle_query_stream(request.text, request.chat_id),
-        media_type="text/event-stream"
+class QueryIn(BaseModel):
+    collection_id: str
+    chat_id: str | None = None
+    text: str = Field(min_length=1, max_length=2000)
+
+
+def sse(event: dict) -> str:
+    return f"data: {json.dumps(event)}\n\n"
+
+
+def create_app(settings: Settings | None = None, embedder=None, llm=None, scorer=None) -> FastAPI:
+    settings = settings or Settings.from_env()
+    data_dir = Path(settings.data_dir)
+    upload_dir = data_dir / "uploads"
+    upload_dir.mkdir(parents=True, exist_ok=True)
+
+    db = Database(data_dir / "mnemo.db")
+    store = VectorStore(data_dir / "chroma", embedder or SentenceEmbedder(settings.embed_model))
+    llm = llm or OllamaClient(settings.ollama_url, settings.ollama_model)
+    scorer = scorer if scorer is not None else NLIScorer(settings.nli_model)
+    service = QueryService(settings, db, store, llm, Grounder(scorer, settings.nli_threshold))
+
+    if not db.list_collections():
+        db.create_collection(DEFAULT_COLLECTION)
+
+    app = FastAPI(title="Mnemo API")
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=list(settings.frontend_origins),
+        allow_methods=["GET", "POST", "DELETE"],
+        allow_headers=["Content-Type"],
     )
+
+    def collection_or_404(collection_id: str) -> dict:
+        collection = db.get_collection(collection_id)
+        if not collection:
+            raise HTTPException(404, "Collection not found.")
+        return collection
+
+    def document_or_404(collection_id: str, doc_id: str) -> dict:
+        doc = db.get_document(doc_id)
+        if not doc or doc["collection_id"] != collection_id:
+            raise HTTPException(404, "Document not found.")
+        return doc
+
+    def doc_dir(collection_id: str) -> Path:
+        return upload_dir / collection_id
+
+    @app.get("/health")
+    def health():
+        return {"ollama": llm.status(), "max_upload_mb": settings.max_upload_mb}
+
+    # collections
+    @app.get("/collections")
+    def list_collections():
+        return db.list_collections()
+
+    @app.post("/collections", status_code=201)
+    def create_collection(body: CollectionIn):
+        try:
+            return db.create_collection(body.name.strip())
+        except DuplicateError as exc:
+            raise HTTPException(409, str(exc))
+
+    @app.delete("/collections/{collection_id}")
+    def delete_collection(collection_id: str):
+        collection_or_404(collection_id)
+        db.delete_collection(collection_id)
+        store.delete_collection(collection_id)
+        shutil.rmtree(doc_dir(collection_id), ignore_errors=True)
+        if not db.list_collections():
+            db.create_collection(DEFAULT_COLLECTION)
+        return {"status": "deleted"}
+
+    # documents
+    @app.get("/collections/{collection_id}/documents")
+    def list_documents(collection_id: str):
+        collection_or_404(collection_id)
+        return db.list_documents(collection_id)
+
+    @app.post("/collections/{collection_id}/documents", status_code=201)
+    def upload_document(collection_id: str, file: UploadFile = File(...)):
+        collection_or_404(collection_id)
+        filename = Path((file.filename or "").replace("\\", "/")).name
+        ext = Path(filename).suffix.lower()
+        if not filename:
+            raise HTTPException(400, "No file was uploaded.")
+        if ext not in ingestion.SUPPORTED:
+            raise HTTPException(415, f"{ext or 'That'} files aren't supported. Upload a PDF, TXT or MD file.")
+        if db.find_document(collection_id, filename):
+            raise HTTPException(409, f"{filename} is already in this collection. Delete it first to upload a new version.")
+
+        doc_id = new_id()
+        folder = doc_dir(collection_id)
+        folder.mkdir(parents=True, exist_ok=True)
+        original = folder / f"{doc_id}{ext}"
+        text_copy = folder / f"{doc_id}.txt"
+        indexed = committed = False
+        try:
+            size = 0
+            with open(original, "wb") as out:
+                while block := file.file.read(READ_BLOCK):
+                    size += len(block)
+                    if size > settings.max_upload_bytes:
+                        raise HTTPException(413, f"That file is over the {settings.max_upload_mb} MB limit.")
+                    out.write(block)
+            if size == 0:
+                raise HTTPException(400, "That file is empty.")
+            if ext == ".pdf" and not original.read_bytes()[:1024].lstrip().startswith(b"%PDF"):
+                raise HTTPException(400, "That doesn't look like a PDF.")
+            try:
+                text = ingestion.extract_text(original)
+            except ingestion.IngestionError as exc:
+                raise HTTPException(422, str(exc))
+            chunks = ingestion.chunk_text(text, settings.chunk_words, settings.chunk_overlap)
+            text_copy.write_text(text, encoding="utf-8")
+            store.add(collection_id, doc_id, filename, chunks)
+            indexed = True
+            document = db.add_document(collection_id, doc_id, filename, ext, size, len(chunks))
+            committed = True
+            return document
+        except DuplicateError as exc:
+            raise HTTPException(409, str(exc))
+        except HTTPException:
+            raise
+        except Exception:
+            log.exception("indexing %s failed", filename)
+            raise HTTPException(500, "Indexing failed. Check the backend log.")
+        finally:
+            if not committed:
+                if indexed:
+                    store.delete_document(collection_id, doc_id)
+                original.unlink(missing_ok=True)
+                text_copy.unlink(missing_ok=True)
+
+    @app.get("/collections/{collection_id}/documents/{doc_id}/text")
+    def document_text(collection_id: str, doc_id: str):
+        doc = document_or_404(collection_id, doc_id)
+        text_path = doc_dir(collection_id) / f"{doc_id}.txt"
+        text = text_path.read_text(encoding="utf-8") if text_path.exists() else ""
+        return {"filename": doc["filename"], "content": text}
+
+    @app.get("/collections/{collection_id}/documents/{doc_id}/raw")
+    def document_raw(collection_id: str, doc_id: str):
+        doc = document_or_404(collection_id, doc_id)
+        path = doc_dir(collection_id) / f"{doc_id}{doc['ext']}"
+        if not path.exists():
+            raise HTTPException(404, "The stored file is missing.")
+        media = "application/pdf" if doc["ext"] == ".pdf" else "text/plain; charset=utf-8"
+        return FileResponse(path, media_type=media, headers={"X-Content-Type-Options": "nosniff"})
+
+    @app.delete("/collections/{collection_id}/documents/{doc_id}")
+    def delete_document(collection_id: str, doc_id: str):
+        doc = document_or_404(collection_id, doc_id)
+        store.delete_document(collection_id, doc_id)
+        db.delete_document(doc_id)
+        for path in (doc_dir(collection_id) / f"{doc_id}{doc['ext']}", doc_dir(collection_id) / f"{doc_id}.txt"):
+            path.unlink(missing_ok=True)
+        return {"status": "deleted"}
+
+    # chats
+    @app.get("/collections/{collection_id}/chats")
+    def list_chats(collection_id: str):
+        collection_or_404(collection_id)
+        return db.list_chats(collection_id)
+
+    @app.post("/collections/{collection_id}/chats", status_code=201)
+    def create_chat(collection_id: str, body: ChatIn):
+        collection_or_404(collection_id)
+        return db.create_chat(collection_id, body.title.strip())
+
+    @app.get("/chats/{chat_id}")
+    def chat_messages(chat_id: str):
+        if not db.get_chat(chat_id):
+            raise HTTPException(404, "Chat not found.")
+        return db.get_messages(chat_id)
+
+    @app.delete("/chats/{chat_id}")
+    def delete_chat(chat_id: str):
+        if not db.get_chat(chat_id):
+            raise HTTPException(404, "Chat not found.")
+        db.delete_chat(chat_id)
+        return {"status": "deleted"}
+
+    # query
+    @app.post("/query")
+    def query(body: QueryIn):
+        question = body.text.strip()
+        if not question:
+            raise HTTPException(400, "The question is empty.")
+        collection_or_404(body.collection_id)
+        if body.chat_id:
+            chat = db.get_chat(body.chat_id)
+            if not chat or chat["collection_id"] != body.collection_id:
+                raise HTTPException(404, "Chat not found in this collection.")
+
+        def events():
+            try:
+                for event in service.stream(body.collection_id, question, body.chat_id):
+                    yield sse(event)
+            except Exception:
+                log.exception("query failed")
+                yield sse({"type": "error", "code": "internal", "message": "Something went wrong while answering. Check the backend log."})
+
+        return StreamingResponse(events(), media_type="text/event-stream", headers={"Cache-Control": "no-cache"})
+
+    return app
+
+
+app = create_app()

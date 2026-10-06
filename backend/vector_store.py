@@ -1,65 +1,87 @@
-import os
+from dataclasses import asdict, dataclass
+from pathlib import Path
+
 import chromadb
-from chromadb.config import Settings
-from sentence_transformers import SentenceTransformer
-import uuid
+from chromadb.config import Settings as ChromaSettings
 
-# Initialize ChromaDB in the backend directory
-db_path = os.path.join(os.path.dirname(__file__), "chroma_db")
-client = chromadb.PersistentClient(path=db_path)
-collection = client.get_or_create_collection(name="mnemo_notes")
 
-# Load the sentence transformer model
-# all-MiniLM-L6-v2 is small, fast, and good for general semantic search
-embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+class SentenceEmbedder:
+    """all-MiniLM-L6-v2 by default, on CPU. Loaded on first use so importing the app stays cheap."""
 
-def add_chunks_to_db(chunks: list[str], file_name: str, date_added: str):
-    """Embeds and adds chunks to the ChromaDB vector store."""
-    if not chunks:
-        return
-        
-    embeddings = embedding_model.encode(chunks).tolist()
-    
-    ids = [str(uuid.uuid4()) for _ in chunks]
-    metadatas = [{"file_name": file_name, "date_added": date_added} for _ in chunks]
-    
-    collection.add(
-        ids=ids,
-        embeddings=embeddings,
-        documents=chunks,
-        metadatas=metadatas
-    )
+    def __init__(self, model_name: str):
+        self.model_name = model_name
+        self._model = None
 
-def search_db(query: str, top_k: int = 5):
-    """Searches the database for the top_k most similar chunks to the query."""
-    # BUGFIX: querying an empty (or near-empty) collection can raise in some
-    # Chroma versions instead of just returning fewer results. Guard against
-    # that so the very first query before any file is uploaded doesn't 500.
-    if collection.count() == 0:
-        return []
+    def encode(self, texts: list[str]) -> list[list[float]]:
+        if self._model is None:
+            from sentence_transformers import SentenceTransformer
 
-    query_embedding = embedding_model.encode([query]).tolist()
+            self._model = SentenceTransformer(self.model_name, device="cpu")
+        return self._model.encode(texts, normalize_embeddings=True).tolist()
 
-    results = collection.query(
-        query_embeddings=query_embedding,
-        n_results=min(top_k, collection.count())
-    )
-    
-    if not results['documents']:
-        return []
-        
-    # results format from chroma: 
-    # {'documents': [['chunk1', 'chunk2']], 'metadatas': [[{'file_name': '...', ...}, ...]], ...}
-    
-    formatted_results = []
-    for doc, meta in zip(results['documents'][0], results['metadatas'][0]):
-        formatted_results.append({
-            "content": doc,
-            "metadata": meta
-        })
-        
-    return formatted_results
 
-def delete_file_chunks(file_name: str):
-    """Deletes all chunks associated with a specific file from the database."""
-    collection.delete(where={"file_name": file_name})
+@dataclass
+class Hit:
+    doc_id: str
+    filename: str
+    chunk_index: int
+    text: str
+    score: float
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+
+class VectorStore:
+    """One Chroma collection per note collection, cosine distance."""
+
+    def __init__(self, path: Path, embedder):
+        self.embedder = embedder
+        self.client = chromadb.PersistentClient(
+            path=str(path), settings=ChromaSettings(anonymized_telemetry=False)
+        )
+
+    @staticmethod
+    def _name(collection_id: str) -> str:
+        return f"notes_{collection_id}"
+
+    def _collection(self, collection_id: str):
+        return self.client.get_or_create_collection(
+            name=self._name(collection_id), metadata={"hnsw:space": "cosine"}
+        )
+
+    def add(self, collection_id: str, doc_id: str, filename: str, chunks: list[str]) -> None:
+        if not chunks:
+            return
+        embeddings = self.embedder.encode(chunks)
+        self._collection(collection_id).add(
+            ids=[f"{doc_id}:{i}" for i in range(len(chunks))],
+            embeddings=embeddings,
+            documents=chunks,
+            metadatas=[{"doc_id": doc_id, "filename": filename, "chunk_index": i} for i in range(len(chunks))],
+        )
+
+    def search(self, collection_id: str, query: str, top_k: int, min_similarity: float) -> list[Hit]:
+        collection = self._collection(collection_id)
+        count = collection.count()
+        if count == 0:
+            return []
+        result = collection.query(
+            query_embeddings=self.embedder.encode([query]),
+            n_results=min(top_k, count),
+        )
+        hits = []
+        for text, meta, distance in zip(result["documents"][0], result["metadatas"][0], result["distances"][0]):
+            score = 1.0 - distance
+            if score >= min_similarity:
+                hits.append(Hit(meta["doc_id"], meta["filename"], meta["chunk_index"], text, round(score, 4)))
+        return hits
+
+    def delete_document(self, collection_id: str, doc_id: str) -> None:
+        self._collection(collection_id).delete(where={"doc_id": doc_id})
+
+    def delete_collection(self, collection_id: str) -> None:
+        try:
+            self.client.delete_collection(self._name(collection_id))
+        except Exception:
+            pass

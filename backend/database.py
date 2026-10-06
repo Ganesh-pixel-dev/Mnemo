@@ -1,90 +1,165 @@
-import sqlite3
-import os
 import json
-from datetime import datetime
+import sqlite3
+import uuid
+from contextlib import contextmanager
+from pathlib import Path
 
-DB_PATH = os.path.join(os.path.dirname(__file__), "mnemo.db")
+SCHEMA = """
+CREATE TABLE IF NOT EXISTS collections (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS documents (
+    id TEXT PRIMARY KEY,
+    collection_id TEXT NOT NULL REFERENCES collections(id) ON DELETE CASCADE,
+    filename TEXT NOT NULL,
+    ext TEXT NOT NULL,
+    size INTEGER NOT NULL,
+    chunk_count INTEGER NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (collection_id, filename)
+);
+CREATE TABLE IF NOT EXISTS chats (
+    id TEXT PRIMARY KEY,
+    collection_id TEXT NOT NULL REFERENCES collections(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    chat_id TEXT NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
+    role TEXT NOT NULL,
+    content TEXT NOT NULL,
+    mode TEXT,
+    sources_json TEXT,
+    grounding_json TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+"""
 
-def init_db():
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    
-    # Create chats table
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS chats (
-            id TEXT PRIMARY KEY,
-            title TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+
+class DuplicateError(Exception):
+    pass
+
+
+def new_id() -> str:
+    return uuid.uuid4().hex
+
+
+class Database:
+    def __init__(self, path: Path):
+        self.path = Path(path)
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        with self._conn() as conn:
+            conn.executescript(SCHEMA)
+
+    @contextmanager
+    def _conn(self):
+        conn = sqlite3.connect(self.path)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys = ON")
+        try:
+            with conn:
+                yield conn
+        finally:
+            conn.close()
+
+    def _one(self, sql: str, args=()):
+        with self._conn() as conn:
+            row = conn.execute(sql, args).fetchone()
+        return dict(row) if row else None
+
+    def _all(self, sql: str, args=()):
+        with self._conn() as conn:
+            return [dict(r) for r in conn.execute(sql, args).fetchall()]
+
+    # collections
+    def create_collection(self, name: str) -> dict:
+        cid = new_id()
+        try:
+            with self._conn() as conn:
+                conn.execute("INSERT INTO collections (id, name) VALUES (?, ?)", (cid, name))
+        except sqlite3.IntegrityError:
+            raise DuplicateError(f'A collection called "{name}" already exists.')
+        return self.get_collection(cid)
+
+    def get_collection(self, cid: str):
+        return self._one("SELECT * FROM collections WHERE id = ?", (cid,))
+
+    def list_collections(self) -> list[dict]:
+        return self._all(
+            """SELECT c.*,
+                      (SELECT COUNT(*) FROM documents d WHERE d.collection_id = c.id) AS document_count,
+                      (SELECT COALESCE(SUM(chunk_count), 0) FROM documents d WHERE d.collection_id = c.id) AS chunk_count
+               FROM collections c ORDER BY c.rowid"""
         )
-    ''')
-    
-    # Create messages table
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS messages (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            chat_id TEXT,
-            role TEXT,
-            content TEXT,
-            mode TEXT,
-            sources_json TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (chat_id) REFERENCES chats (id)
-        )
-    ''')
-    
-    conn.commit()
-    conn.close()
 
-def create_chat(chat_id: str, title: str):
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute('INSERT INTO chats (id, title) VALUES (?, ?)', (chat_id, title))
-    conn.commit()
-    conn.close()
+    def delete_collection(self, cid: str) -> None:
+        with self._conn() as conn:
+            conn.execute("DELETE FROM collections WHERE id = ?", (cid,))
 
-def get_chats():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    cursor = conn.cursor()
-    cursor.execute('SELECT * FROM chats ORDER BY created_at DESC')
-    chats = [dict(row) for row in cursor.fetchall()]
-    conn.close()
-    return chats
+    # documents
+    def add_document(self, collection_id: str, doc_id: str, filename: str, ext: str, size: int, chunk_count: int) -> dict:
+        try:
+            with self._conn() as conn:
+                conn.execute(
+                    "INSERT INTO documents (id, collection_id, filename, ext, size, chunk_count) VALUES (?, ?, ?, ?, ?, ?)",
+                    (doc_id, collection_id, filename, ext, size, chunk_count),
+                )
+        except sqlite3.IntegrityError:
+            raise DuplicateError(f"{filename} is already in this collection. Delete it first to upload a new version.")
+        return self.get_document(doc_id)
 
-def add_message(chat_id: str, role: str, content: str, mode: str = None, sources: list = None):
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    sources_str = json.dumps(sources) if sources else None
-    cursor.execute(
-        'INSERT INTO messages (chat_id, role, content, mode, sources_json) VALUES (?, ?, ?, ?, ?)', 
-        (chat_id, role, content, mode, sources_str)
-    )
-    conn.commit()
-    conn.close()
+    def get_document(self, doc_id: str):
+        return self._one("SELECT * FROM documents WHERE id = ?", (doc_id,))
 
-def get_messages(chat_id: str):
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    cursor = conn.cursor()
-    cursor.execute('SELECT * FROM messages WHERE chat_id = ? ORDER BY created_at ASC', (chat_id,))
-    
-    messages = []
-    for row in cursor.fetchall():
-        msg = dict(row)
-        if msg['sources_json']:
-            msg['sources'] = json.loads(msg['sources_json'])
-        else:
-            msg['sources'] = []
-        messages.append(msg)
-        
-    conn.close()
-    return messages
+    def find_document(self, collection_id: str, filename: str):
+        return self._one("SELECT * FROM documents WHERE collection_id = ? AND filename = ?", (collection_id, filename))
 
-def delete_chat(chat_id: str):
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute('DELETE FROM messages WHERE chat_id = ?', (chat_id,))
-    cursor.execute('DELETE FROM chats WHERE id = ?', (chat_id,))
-    conn.commit()
-    conn.close()
+    def list_documents(self, collection_id: str) -> list[dict]:
+        return self._all("SELECT * FROM documents WHERE collection_id = ? ORDER BY rowid", (collection_id,))
 
+    def delete_document(self, doc_id: str) -> None:
+        with self._conn() as conn:
+            conn.execute("DELETE FROM documents WHERE id = ?", (doc_id,))
+
+    # chats
+    def create_chat(self, collection_id: str, title: str) -> dict:
+        chat_id = new_id()
+        with self._conn() as conn:
+            conn.execute("INSERT INTO chats (id, collection_id, title) VALUES (?, ?, ?)", (chat_id, collection_id, title))
+        return self.get_chat(chat_id)
+
+    def get_chat(self, chat_id: str):
+        return self._one("SELECT * FROM chats WHERE id = ?", (chat_id,))
+
+    def list_chats(self, collection_id: str) -> list[dict]:
+        return self._all("SELECT * FROM chats WHERE collection_id = ? ORDER BY rowid DESC", (collection_id,))
+
+    def delete_chat(self, chat_id: str) -> None:
+        with self._conn() as conn:
+            conn.execute("DELETE FROM chats WHERE id = ?", (chat_id,))
+
+    # messages
+    def add_message(self, chat_id: str, role: str, content: str, mode=None, sources=None, grounding=None) -> None:
+        with self._conn() as conn:
+            conn.execute(
+                "INSERT INTO messages (chat_id, role, content, mode, sources_json, grounding_json) VALUES (?, ?, ?, ?, ?, ?)",
+                (
+                    chat_id,
+                    role,
+                    content,
+                    mode,
+                    json.dumps(sources) if sources is not None else None,
+                    json.dumps(grounding) if grounding is not None else None,
+                ),
+            )
+
+    def get_messages(self, chat_id: str) -> list[dict]:
+        rows = self._all("SELECT * FROM messages WHERE chat_id = ? ORDER BY id", (chat_id,))
+        for row in rows:
+            row["sources"] = json.loads(row.pop("sources_json") or "[]")
+            grounding = row.pop("grounding_json")
+            row["grounding"] = json.loads(grounding) if grounding else None
+        return rows

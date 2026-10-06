@@ -3,6 +3,7 @@ uvicorn[standard]
 pydantic
 chromadb
 sentence-transformers
+transformers
 pdfplumber
 python-multipart
 requests
