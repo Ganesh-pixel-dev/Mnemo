@@ -1,0 +1,11 @@
+Lecture 3: Training neural networks
+
+A neural network is a stack of layers. Each layer multiplies its input by a matrix of weights, adds a bias and passes the result through a non-linear function such as ReLU. Training means finding weights that make the loss small on the training data.
+
+Gradient descent is the method used to lower the loss. At each step it moves every weight a small distance in the direction that reduces the loss. The learning rate sets how big that distance is. If the learning rate is too large the loss can bounce around or diverge. If it is too small training takes very long.
+
+Backpropagation is how the gradients are computed. It applies the chain rule backwards through the layers, so the gradient of the loss with respect to every weight is found in one backward pass. Backpropagation does not update any weights by itself. The optimiser does that using the gradients.
+
+Overfitting happens when the model memorises the training set and does badly on new data. Signs of overfitting are a training loss that keeps falling while the validation loss rises. Dropout, weight decay and early stopping reduce overfitting. Early stopping means we stop training when the validation loss stops improving.
+
+Batch size is the number of examples used for one gradient step. A small batch gives noisier gradients but each step is cheap. Exam note: the midterm covers lectures 1 to 4 and is on 14 March.

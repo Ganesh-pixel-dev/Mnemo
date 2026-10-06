@@ -20,7 +20,7 @@ class Settings:
     frontend_origins: tuple = ("http://localhost:5173", "http://127.0.0.1:5173")
     max_upload_mb: int = 20
     top_k: int = 4
-    min_similarity: float = 0.35
+    min_similarity: float = 0.2
     embed_model: str = "all-MiniLM-L6-v2"
     nli_model: str = "cross-encoder/nli-deberta-v3-xsmall"
     nli_threshold: float = 0.5
