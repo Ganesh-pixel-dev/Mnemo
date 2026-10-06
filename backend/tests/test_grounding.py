@@ -24,11 +24,16 @@ def test_refusal_is_recognised():
     assert not is_refusal("Gradient descent lowers the loss.")
 
 
-def test_long_passages_are_windowed():
-    parts = windows(" ".join(f"w{i}" for i in range(300)))
-    assert len(parts) > 1
-    assert all(len(p.split()) <= 120 for p in parts)
+def test_windows_are_short_sentences_and_neighbour_pairs():
+    parts = windows("First sentence here. Second sentence here. Third one.")
+    assert parts[:3] == ["First sentence here.", "Second sentence here.", "Third one."]
+    assert "First sentence here. Second sentence here." in parts
     assert windows("short") == ["short"]
+
+
+def test_unpunctuated_text_is_cut_into_pieces():
+    parts = windows(" ".join(f"w{i}" for i in range(300)))
+    assert len(parts) == 5 and all(len(p.split()) <= 60 for p in parts)
 
 
 def test_nli_grounder_flags_the_unsupported_sentence():

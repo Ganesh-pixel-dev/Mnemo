@@ -19,8 +19,7 @@ STOPWORDS = frozenset(
     "those there their they them he she his her we you i our your not no do does did done has have had can could will would "
     "should may might also than into about over under which who whom what when where how why".split()
 )
-WINDOW_WORDS = 120
-WINDOW_STEP = 80
+MAX_WINDOW_WORDS = 60
 WINDOWS_PER_SENTENCE = 3
 LEXICAL_THRESHOLD = 0.6
 REFUSALS = ("your notes don't cover this", "your notes do not cover this", "i cannot answer")
@@ -56,15 +55,22 @@ def is_refusal(text: str) -> bool:
 
 
 def windows(text: str) -> list[str]:
-    words = text.split()
-    if len(words) <= WINDOW_WORDS:
-        return [text]
-    out = []
-    for start in range(0, len(words), WINDOW_STEP):
-        out.append(" ".join(words[start : start + WINDOW_WORDS]))
-        if start + WINDOW_WORDS >= len(words):
-            break
-    return out
+    """Short premises: each sentence, and each pair of neighbouring sentences.
+
+    The NLI model scored a verbatim sentence at 0.11 against a 120 word premise and 0.70 against
+    the first 40 words, so long premises are avoided. Runs of text with no sentence ends are cut
+    into pieces of at most MAX_WINDOW_WORDS words.
+    """
+    pieces = []
+    for sentence in split_sentences(text):
+        words = sentence.split()
+        for start in range(0, len(words), MAX_WINDOW_WORDS):
+            pieces.append(" ".join(words[start : start + MAX_WINDOW_WORDS]))
+    out = list(pieces)
+    for first, second in zip(pieces, pieces[1:]):
+        if len(first.split()) + len(second.split()) <= MAX_WINDOW_WORDS:
+            out.append(f"{first} {second}")
+    return out or [text]
 
 
 class NLIScorer:
